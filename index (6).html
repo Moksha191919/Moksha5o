@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Moksha 5o Mini</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: black;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .live-bg {
+      position: fixed;
+      width: 100vw;
+      height: 100vh;
+      top: 0;
+      left: 0;
+      z-index: -1;
+      background: url('https://cdn.pixabay.com/photo/2014/09/16/20/59/space-448601_1280.jpg') no-repeat center center/cover;
+      filter: brightness(0.3);
+    }
+
+    header {
+      text-align: center;
+      padding: 1rem;
+      font-size: 2rem; /* Increased font size for better readability on mobile */
+      font-weight: bold;
+      color: #10a37f;
+      animation: fadeInDown 1s ease;
+    }
+
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 1rem 1.5rem; /* Increased padding for better interaction */
+      margin: 0.5rem 0;
+      border-radius: 16px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      animation: fadeIn 0.5s ease;
+      font-size: 1.1rem; /* Slightly increased font size for messages */
+    }
+
+    .user {
+      align-self: flex-end;
+      background-color: rgba(52, 53, 65, 0.9);
+      color: white;
+    }
+
+    .bot {
+      align-self: flex-start;
+      background-color: rgba(68, 70, 84, 0.9);
+      color: white;
+    }
+
+    .input-area {
+      display: flex;
+      padding: 1rem;
+      background-color: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(6px);
+      justify-content: center; /* Centering elements in input area */
+    }
+
+    input {
+      flex: 1;
+      padding: 1rem; /* Increased padding for input field */
+      border: none;
+      border-radius: 12px;
+      background: #2a2a2a;
+      color: white;
+      margin-right: 0.5rem;
+      font-size: 1.2rem; /* Increased font size for better legibility */
+    }
+
+    button {
+      padding: 1rem 1.5rem; /* Increased padding for buttons */
+      background-color: #10a37f;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1.2rem; /* Adjusted font size for buttons */
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      color: white;
+    }
+
+    .mic-btn {
+      margin-left: 8px;
+      background: #10a37f;
+      border: none;
+      border-radius: 50%;
+      width: 50px; /* Enlarged mic button for better touch */
+      height: 50px;
+      color: white;
+      font-size: 1.5rem; /* Enlarged icon for mic button */
+      cursor: pointer;
+    }
+
+    /* Ensure layout is responsive for mobile screens */
+    @media (max-width: 768px) {
+      header {
+        font-size: 1.5rem; /* Smaller font size for small screens */
+      }
+
+      .message {
+        font-size: 1rem; /* Adjusted font size for mobile messages */
+      }
+
+      .input-area {
+        padding: 0.8rem;
+      }
+
+      input {
+        font-size: 1.1rem; /* Adjusted font size for mobile input */
+      }
+
+      button {
+        font-size: 1rem; /* Adjusted font size for mobile buttons */
+      }
+
+      .mic-btn {
+        width: 45px; /* Adjust mic button for mobile */
+        height: 45px;
+        font-size: 1.4rem;
+      }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="live-bg"></div>
+  <header id="intro">Welcome to Moksha 5o Mini</header>
+  <div class="toolbar">
+    <span id="date-info"></span>
+  </div>
+  <div class="chat-container" id="chat"></div>
+  <div class="input-area">
+    <input type="text" id="userInput" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
+    <button class="mic-btn" onclick="startVoiceInput()">🎤</button>
+  </div>
+
+  <script>
+    const API_KEY = "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";
+    const MODEL = "mistralai/mistral-7b-instruct:free";
+
+    const chat = document.getElementById("chat");
+    const input = document.getElementById("userInput");
+
+    // Load chat history
+    window.onload = () => {
+      const history = JSON.parse(localStorage.getItem("chatHistory")) || [];
+      history.forEach(msg => appendMessage(msg.text, msg.role));
+      updateDate();
+    };
+
+    function saveToHistory(text, role) {
+      let history = JSON.parse(localStorage.getItem("chatHistory")) || [];
+      history.push({ text, role });
+      localStorage.setItem("chatHistory", JSON.stringify(history));
+    }
+
+    async function sendMessage() {
+      const userMessage = input.value.trim();
+      if (!userMessage) return;
+
+      appendMessage(userMessage, "user");
+      saveToHistory(userMessage, "user");
+      input.value = "";
+
+      const botDiv = appendMessage("...", "bot");
+
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://yourapp.local",
+            "X-Title": "Moksha 5o Mini"
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            messages: [{ role: "user", content: userMessage }]
+          })
+        });
+
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content || "⚠️ No reply received.";
+        botDiv.innerHTML = marked.parse(reply);
+        saveToHistory(reply, "bot");
+      } catch (e) {
+        botDiv.innerHTML = "<i>Error getting response.</i>";
+      }
+    }
+
+    function appendMessage(text, role) {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      div.innerHTML = marked.parse(text);
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function startVoiceInput() {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = 'en-US';
+      recognition.start();
+      recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+        sendMessage();
+      };
+    }
+
+    function updateDate() {
+      navigator.geolocation.getCurrentPosition(() => {
+        const today = new Date().toLocaleDateString(undefined, {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+        document.getElementById("date-info").textContent = `📅 ${today}`;
+      });
+    }
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
